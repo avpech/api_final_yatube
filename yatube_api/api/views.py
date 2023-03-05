@@ -1,3 +1,4 @@
+from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 from rest_framework import filters
 from rest_framework import mixins
@@ -12,18 +13,20 @@ from api.serializers import (
     GroupSerializer,
     PostSerializer
 )
-from posts.models import Follow, Group, Post
+from posts.models import Group, Post
 
 
 class PostViewSet(viewsets.ModelViewSet):
     """Вьюсет модели Post."""
-    queryset = Post.objects.all()
+    queryset = Post.objects.select_related('author').all()
     serializer_class = PostSerializer
     permission_classes = (
         permissions.IsAuthenticatedOrReadOnly,
         IsAuthorOrReadOnly
     )
     pagination_class = LimitOffsetPagination
+    filter_backends = (DjangoFilterBackend,)
+    filterset_fields = ('author__username', 'group')
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
@@ -47,7 +50,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         post_id = self.kwargs.get('post_id')
         post = get_object_or_404(Post, pk=post_id)
-        return post.comments.all()
+        return post.comments.select_related('author').all()
 
     def perform_create(self, serializer):
         post_id = self.kwargs.get('post_id')
@@ -65,7 +68,8 @@ class FollowViewSet(mixins.CreateModelMixin,
     search_fields = ('user__username', 'following__username')
 
     def get_queryset(self):
-        return Follow.objects.filter(user=self.request.user)
+        return self.request.user.follower.select_related(
+            'user', 'following').all()
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
